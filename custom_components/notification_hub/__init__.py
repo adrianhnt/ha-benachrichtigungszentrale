@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import voluptuous as vol
@@ -17,11 +18,13 @@ from homeassistant.core import (
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.util.yaml import load_yaml_dict
 
 from .const import (
     ATTR_ACTIONS,
     ATTR_DATA,
     ATTR_DEVICES,
+    ATTR_ID,
     ATTR_MESSAGE,
     ATTR_PERSONS,
     ATTR_PRIORITY,
@@ -29,6 +32,7 @@ from .const import (
     ATTR_TITLE,
     ATTR_TYPE,
     ATTR_URL,
+    ATTR_VARIABLES,
     DOMAIN,
     MOBILE_APP_ACTION_EVENT,
     PRIORITIES,
@@ -38,6 +42,8 @@ from .const import (
 )
 from .devices import async_setup_devices
 from .hub import NotificationHub
+from .panel import async_register_panel
+from .websocket import async_register_websocket_commands
 
 type NotificationHubConfigEntry = ConfigEntry[NotificationHub]
 
@@ -49,10 +55,14 @@ _LIST = vol.All(cv.ensure_list, [cv.string])
 
 SEND_SCHEMA = vol.Schema(
     {
-        vol.Required(ATTR_TYPE): cv.string,
-        vol.Required(ATTR_MESSAGE): cv.string,
+        # Entweder eine zentral verwaltete Benachrichtigung (id) ...
+        vol.Optional(ATTR_ID): cv.string,
+        vol.Optional(ATTR_VARIABLES): dict,
+        # ... oder alles direkt im Aufruf (bisherige Variante)
+        vol.Optional(ATTR_TYPE): cv.string,
+        vol.Optional(ATTR_MESSAGE): cv.string,
         vol.Optional(ATTR_TITLE): cv.string,
-        vol.Optional(ATTR_PRIORITY, default=PRIORITY_ACTIVE): vol.In(PRIORITIES),
+        vol.Optional(ATTR_PRIORITY): vol.In(PRIORITIES),
         vol.Optional(ATTR_PERSONS): _LIST,
         vol.Optional(ATTR_DEVICES): _LIST,
         vol.Optional(ATTR_ACTIONS): _LIST,
@@ -84,11 +94,29 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async def handle_send(call: ServiceCall) -> ServiceResponse:
         hub = _get_hub(hass)
         data: dict[str, Any] = call.data
+        if data.get(ATTR_ID):
+            result = await hub.async_send_notification(
+                data[ATTR_ID],
+                persons=data.get(ATTR_PERSONS),
+                devices=data.get(ATTR_DEVICES),
+                variables=data.get(ATTR_VARIABLES),
+                title=data.get(ATTR_TITLE),
+                message=data.get(ATTR_MESSAGE),
+                priority=data.get(ATTR_PRIORITY),
+                tag=data.get(ATTR_TAG),
+                url=data.get(ATTR_URL),
+                extra_data=data.get(ATTR_DATA),
+            )
+            return result if call.return_response else None
+        if not data.get(ATTR_TYPE) or not data.get(ATTR_MESSAGE):
+            raise ServiceValidationError(
+                "Bitte eine Benachrichtigung (id) angeben – oder Typ und Nachricht."
+            )
         result = await hub.async_send(
             type_key=data[ATTR_TYPE],
             message=data[ATTR_MESSAGE],
             title=data.get(ATTR_TITLE),
-            priority=data[ATTR_PRIORITY],
+            priority=data.get(ATTR_PRIORITY) or PRIORITY_ACTIVE,
             persons=data.get(ATTR_PERSONS),
             devices=data.get(ATTR_DEVICES),
             action_keys=data.get(ATTR_ACTIONS),
@@ -116,6 +144,14 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     hass.services.async_register(
         DOMAIN, SERVICE_CLEAR, handle_clear, schema=CLEAR_SCHEMA
     )
+
+    # Grundlage für die dynamische Auswahlliste der IDs
+    hass.data[f"{DOMAIN}_services_yaml"] = await hass.async_add_executor_job(
+        load_yaml_dict, str(Path(__file__).parent / "services.yaml")
+    )
+
+    async_register_websocket_commands(hass)
+    await async_register_panel(hass)
     return True
 
 
@@ -129,6 +165,7 @@ async def async_setup_entry(
 
     # Geräte für Zentrale, Typen und Aktionen (Auswahllisten in Automationen)
     async_setup_devices(hass, entry)
+    hub.publish_service_schema()
 
     entry.async_on_unload(
         hass.bus.async_listen(MOBILE_APP_ACTION_EVENT, hub.async_handle_event)

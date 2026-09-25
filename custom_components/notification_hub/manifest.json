@@ -1,13 +1,20 @@
 {
   "domain": "notification_hub",
   "name": "Benachrichtigungszentrale",
+  "after_dependencies": [
+    "automation",
+    "script"
+  ],
   "codeowners": [
     "@adrianhnt"
   ],
   "config_flow": true,
   "dependencies": [
+    "http",
     "mobile_app",
-    "person"
+    "panel_custom",
+    "person",
+    "websocket_api"
   ],
   "documentation": "https://github.com/adrianhnt/ha-benachrichtigungszentrale",
   "integration_type": "service",
@@ -15,5 +22,5 @@
   "issue_tracker": "https://github.com/adrianhnt/ha-benachrichtigungszentrale/issues",
   "requirements": [],
   "single_config_entry": true,
-  "version": "0.2.0"
+  "version": "0.3.0"
 }

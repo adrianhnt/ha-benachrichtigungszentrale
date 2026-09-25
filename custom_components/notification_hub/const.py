@@ -62,6 +62,8 @@ ATTR_ACTIONS = "actions"
 ATTR_TAG = "tag"
 ATTR_URL = "url"
 ATTR_DATA = "data"
+ATTR_ID = "id"
+ATTR_VARIABLES = "variables"
 
 # Gerätemodelle (für die Auswahl in Automationen)
 MODEL_HUB = "Zentrale"
@@ -70,6 +72,27 @@ MODEL_ACTION = "Aktion"
 
 # Gültigkeit einer Aktion: höchstens 30 Tage (= Aufbewahrung des Verlaufs)
 MAX_EXPIRY_MINUTES = 30 * 24 * 60
+
+# Zentral verwaltete Benachrichtigungen (eigener Speicher, nicht als Subentry)
+NOTIFICATIONS_STORAGE_KEY = f"{DOMAIN}.notifications"
+NOTIFICATIONS_STORAGE_VERSION = 1
+N_ID = "id"
+N_CATEGORY = "category"
+N_TITLE = "title"
+N_MESSAGE = "message"
+N_PRIORITY = "priority"
+N_PERSONS = "persons"
+N_DEVICES = "devices"
+N_ACTIONS = "actions"
+N_URL = "url"
+N_NOTE = "note"
+
+# Seite in der Seitenleiste
+PANEL_URL_PATH = "benachrichtigungen"
+PANEL_TITLE = "Benachrichtigungen"
+PANEL_ICON = "mdi:bell-cog-outline"
+PANEL_ELEMENT = "notification-hub-panel"
+PANEL_STATIC_URL = f"/{DOMAIN}_static"
 
 # Kennung in der Knopf-ID
 ACTION_PREFIX = "NHUB"

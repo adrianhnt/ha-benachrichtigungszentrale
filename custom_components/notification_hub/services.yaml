@@ -1,7 +1,14 @@
 send:
   fields:
+    id:
+      example: waesche_fertig
+      selector:
+        text:
+    variables:
+      example: '{"dauer": "1:32 h"}'
+      selector:
+        object:
     type:
-      required: true
       example: haustuer
       selector:
         device:
@@ -9,7 +16,6 @@ send:
             - integration: notification_hub
               model: Benachrichtigungstyp
     message:
-      required: true
       example: Es hat an der Haustür geklingelt.
       selector:
         text:

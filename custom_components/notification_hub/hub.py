@@ -13,8 +13,12 @@ from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.service import async_set_service_schema
 from homeassistant.helpers.storage import Store
+from homeassistant.helpers.template import Template
+from homeassistant.exceptions import TemplateError
 from homeassistant.util import dt as dt_util, slugify
+from jinja2 import Environment, meta
 
 from .const import (
     ACTION_PREFIX,
@@ -38,10 +42,24 @@ from .const import (
     EVENT_ACTION,
     HISTORY_MAX_AGE_DAYS,
     HISTORY_MAX_ENTRIES,
+    N_ACTIONS,
+    N_CATEGORY,
+    N_DEVICES,
+    N_ID,
+    N_MESSAGE,
+    N_NOTE,
+    N_PERSONS,
+    N_PRIORITY,
+    N_TITLE,
+    N_URL,
+    NOTIFICATIONS_STORAGE_KEY,
+    NOTIFICATIONS_STORAGE_VERSION,
+    PRIORITIES,
     PRIORITY_ACTIVE,
     PRIORITY_CRITICAL,
     PRIORITY_PASSIVE,
     PRIORITY_TIME_SENSITIVE,
+    SERVICE_SEND,
     SIGNAL_SENT,
     STORAGE_KEY,
     STORAGE_VERSION,
@@ -73,6 +91,10 @@ class NotificationHub:
         self.entry = entry
         self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self._history: dict[str, dict[str, Any]] = {}
+        self._n_store: Store[dict[str, Any]] = Store(
+            hass, NOTIFICATIONS_STORAGE_VERSION, NOTIFICATIONS_STORAGE_KEY
+        )
+        self.notifications: dict[str, dict[str, Any]] = {}
         self.do_not_disturb = False
         self.muted_types: set[str] = set()
         self.last_sent: dict[str, Any] | None = None
@@ -128,7 +150,11 @@ class NotificationHub:
     # ------------------------------------------------------------------
 
     async def async_load(self) -> None:
-        """Verlauf laden."""
+        """Verlauf und Benachrichtigungen laden."""
+        n_data = await self._n_store.async_load() or {}
+        self.notifications = {
+            n[N_ID]: n for n in n_data.get("notifications", []) if N_ID in n
+        }
         data = await self._store.async_load() or {}
         self._history = data.get("notifications", {})
         self._prune()
@@ -137,6 +163,7 @@ class NotificationHub:
             self.last_sent = {
                 "notification_id": nid,
                 "sent_at": dt_util.parse_datetime(rec["sent_at"]),
+                "id": rec.get("id"),
                 "type": rec["type"],
                 "title": rec["title"],
                 "message": rec["message"],
@@ -254,6 +281,185 @@ class NotificationHub:
         return list(selected.values())
 
     # ------------------------------------------------------------------
+    # Zentral verwaltete Benachrichtigungen
+    # ------------------------------------------------------------------
+
+    def validate_notification(
+        self, data: dict[str, Any], original_id: str | None
+    ) -> dict[str, Any]:
+        """Eingaben prüfen und bereinigen. Wirft ValueError mit deutschem Text."""
+        nid = str(data.get(N_ID, "")).strip()
+        if original_id is not None:
+            nid = original_id  # ID bleibt beim Bearbeiten fest
+        elif not nid or slugify(nid) != nid:
+            raise ValueError(
+                "Die ID darf nur Kleinbuchstaben, Zahlen und _ enthalten "
+                "(keine Umlaute oder Leerzeichen)."
+            )
+        elif nid in self.notifications:
+            raise ValueError(f"Die ID „{nid}“ gibt es schon.")
+
+        category = str(data.get(N_CATEGORY, "")).strip()
+        if category not in self.types:
+            raise ValueError("Bitte eine Kategorie auswählen.")
+        message = str(data.get(N_MESSAGE, "")).strip()
+        if not message:
+            raise ValueError("Der Text darf nicht leer sein.")
+        priority = data.get(N_PRIORITY) or PRIORITY_ACTIVE
+        if priority not in PRIORITIES:
+            raise ValueError(f"Unbekannte Dringlichkeit: {priority}")
+        actions = [str(a) for a in data.get(N_ACTIONS) or []]
+        unknown = [a for a in actions if a not in self.actions]
+        if unknown:
+            raise ValueError(f"Unbekannte Knöpfe: {', '.join(unknown)}")
+        if len(actions) > 10:
+            raise ValueError("Höchstens 10 Knöpfe pro Benachrichtigung.")
+        for field_name in (N_TITLE, N_MESSAGE):
+            text = str(data.get(field_name) or "")
+            if "{" in text:
+                try:
+                    Environment().parse(text)
+                except Exception as err:  # noqa: BLE001 - Jinja-Syntaxfehler
+                    raise ValueError(f"Platzhalter im Feld {field_name} fehlerhaft: {err}") from err
+
+        return {
+            N_ID: nid,
+            N_CATEGORY: category,
+            N_TITLE: str(data.get(N_TITLE) or "").strip(),
+            N_MESSAGE: message,
+            N_PRIORITY: priority,
+            N_PERSONS: [str(p) for p in data.get(N_PERSONS) or []],
+            N_DEVICES: [str(d) for d in data.get(N_DEVICES) or []],
+            N_ACTIONS: actions,
+            N_URL: str(data.get(N_URL) or "").strip(),
+            N_NOTE: str(data.get(N_NOTE) or "").strip(),
+        }
+
+    async def async_save_notification(
+        self, data: dict[str, Any], original_id: str | None = None
+    ) -> dict[str, Any]:
+        """Benachrichtigung anlegen oder ändern (gilt sofort)."""
+        if original_id is not None and original_id not in self.notifications:
+            raise ValueError(f"Die Benachrichtigung „{original_id}“ gibt es nicht mehr.")
+        clean = self.validate_notification(data, original_id)
+        self.notifications[clean[N_ID]] = clean
+        await self._async_store_notifications()
+        return clean
+
+    async def async_delete_notification(self, nid: str) -> None:
+        """Benachrichtigung löschen."""
+        if self.notifications.pop(nid, None) is None:
+            raise ValueError(f"Die Benachrichtigung „{nid}“ gibt es nicht.")
+        await self._async_store_notifications()
+
+    async def _async_store_notifications(self) -> None:
+        await self._n_store.async_save(
+            {"notifications": sorted(self.notifications.values(), key=lambda n: n[N_ID])}
+        )
+        self.publish_service_schema()
+
+    @callback
+    def publish_service_schema(self) -> None:
+        """Auswahlliste der IDs im Automations-Editor aktualisieren."""
+        base = self.hass.data.get(f"{DOMAIN}_services_yaml") or {}
+        send = base.get(SERVICE_SEND)
+        if not send or not self.hass.services.has_service(DOMAIN, SERVICE_SEND):
+            return
+        fields = {k: dict(v) for k, v in (send.get("fields") or {}).items()}
+        types = self.types
+        options = [
+            {
+                "value": n[N_ID],
+                "label": f"{n[N_ID]} – {n[N_TITLE] or types.get(n[N_CATEGORY], {}).get(CONF_TITLE, n[N_CATEGORY])}",
+            }
+            for n in sorted(self.notifications.values(), key=lambda n: n[N_ID])
+        ]
+        if "id" in fields:
+            fields["id"]["selector"] = {
+                "select": {"options": options, "custom_value": True, "mode": "dropdown"}
+            }
+        async_set_service_schema(self.hass, DOMAIN, SERVICE_SEND, {"fields": fields})
+
+    @staticmethod
+    def _test_priority(priority: str, test: bool) -> str:
+        # Ein Test soll nicht mit Alarmton durch Lautlos brechen
+        if test and priority == PRIORITY_CRITICAL:
+            return PRIORITY_TIME_SENSITIVE
+        return priority
+
+    @staticmethod
+    def template_variables(*texts: str) -> set[str]:
+        """Namen der Platzhalter in den Texten."""
+        names: set[str] = set()
+        for text in texts:
+            if text and "{" in text:
+                try:
+                    names |= meta.find_undeclared_variables(Environment().parse(text))
+                except Exception:  # noqa: BLE001
+                    continue
+        return names
+
+    def _render(self, text: str, variables: dict[str, Any]) -> str:
+        if not text or "{" not in text:
+            return text
+        try:
+            return str(Template(text, self.hass).async_render(variables, parse_result=False))
+        except TemplateError as err:
+            raise ServiceValidationError(f"Platzhalter konnten nicht gefüllt werden: {err}") from err
+
+    async def async_send_notification(
+        self,
+        nid: str,
+        *,
+        persons: list[str] | None = None,
+        devices: list[str] | None = None,
+        variables: dict[str, Any] | None = None,
+        title: str | None = None,
+        message: str | None = None,
+        priority: str | None = None,
+        tag: str | None = None,
+        url: str | None = None,
+        extra_data: dict[str, Any] | None = None,
+        test: bool = False,
+    ) -> dict[str, Any]:
+        """Zentral verwaltete Benachrichtigung senden.
+
+        Empfänger aus dem Aufruf ersetzen die Standard-Empfänger der Tabelle.
+        """
+        notification = self.notifications.get(nid)
+        if notification is None:
+            raise ServiceValidationError(
+                f"Benachrichtigung „{nid}“ gibt es nicht. "
+                f"Vorhanden: {', '.join(sorted(self.notifications)) or 'keine'}"
+            )
+        variables = dict(variables or {})
+        raw_title = title or notification[N_TITLE]
+        raw_message = message or notification[N_MESSAGE]
+        if test:
+            for name in self.template_variables(raw_title, raw_message):
+                variables.setdefault(name, f"‹{name}›")
+        if not persons and not devices:
+            persons = notification[N_PERSONS] or None
+            devices = notification[N_DEVICES] or None
+        final_title = self._render(raw_title, variables) if raw_title else None
+        if test:
+            final_title = f"🧪 {final_title or self.types.get(notification[N_CATEGORY], {}).get(CONF_TITLE, '')}"
+        return await self.async_send(
+            type_key=notification[N_CATEGORY],
+            message=self._render(raw_message, variables),
+            title=final_title or None,
+            priority=self._test_priority(priority or notification[N_PRIORITY], test),
+            persons=persons,
+            devices=devices,
+            action_keys=list(notification[N_ACTIONS]),
+            tag=tag,
+            url=url or notification[N_URL] or None,
+            extra_data=extra_data,
+            force=test,
+            source_id=nid,
+        )
+
+    # ------------------------------------------------------------------
     # Versand
     # ------------------------------------------------------------------
 
@@ -297,6 +503,8 @@ class NotificationHub:
         tag: str | None = None,
         url: str | None = None,
         extra_data: dict[str, Any] | None = None,
+        force: bool = False,
+        source_id: str | None = None,
     ) -> dict[str, Any]:
         """Eine Benachrichtigung senden.
 
@@ -326,7 +534,7 @@ class NotificationHub:
         if len(action_keys) > 10:
             raise ServiceValidationError("Maximal 10 Knöpfe pro Benachrichtigung.")
 
-        if priority != PRIORITY_CRITICAL:
+        if priority != PRIORITY_CRITICAL and not force:
             if self.do_not_disturb:
                 return {"sent": False, "reason": "do_not_disturb"}
             if type_key in self.muted_types:
@@ -376,6 +584,7 @@ class NotificationHub:
 
         self._history[nid] = {
             "sent_at": now.isoformat(),
+            "id": source_id,
             "type": type_key,
             "title": final_title,
             "message": message,
@@ -392,6 +601,7 @@ class NotificationHub:
         self.last_sent = {
             "notification_id": nid,
             "sent_at": now,
+            "id": source_id,
             "type": type_key,
             "title": final_title,
             "message": message,
