@@ -84,6 +84,10 @@ const STYLE = `
   .pick label { flex-direction:row; align-items:center; gap:6px; font-size:13px; color:var(--primary-text-color); border:1px solid var(--divider-color,#e0e0e0); border-radius:16px; padding:4px 10px; cursor:pointer; }
   .pick input { width:auto; }
   .sub { font-size:12px; color:var(--secondary-text-color); margin-bottom:4px; }
+  .step { border:1px solid var(--divider-color,#e0e0e0); border-radius:10px; padding:10px 12px; margin-bottom:10px; display:flex; flex-direction:column; }
+  .stephead { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; font-size:13px; }
+  .stepbtns .ib[disabled] { opacity:.3; cursor:default; }
+  .step details { margin-top:8px; font-size:12px; }
   .df { display:flex; justify-content:flex-end; gap:8px; padding:12px 20px 18px; }
   .df .left { margin-right:auto; }
   details summary { cursor:pointer; font-size:12px; color:var(--secondary-text-color); }
@@ -301,7 +305,7 @@ class NotificationHubPanel extends HTMLElement {
               <td><code>${esc(b.key)}</code></td>
               <td>${esc(b.button_title)}</td>
               <td>${b.icon ? `<code>${esc(b.icon)}</code>` : `<span class="muted">–</span>`}</td>
-              <td><code>${esc(b.service)}</code>${b.target_entities.length ? `<div class="muted">→ ${b.target_entities.map((e) => esc(this._entityName(e))).join(", ")}</div>` : ""}</td>
+              <td>${(b.steps || []).map((st, i) => `<div${i ? ' style="margin-top:4px"' : ""}>${b.steps.length > 1 ? `<span class="muted">${i + 1}.</span> ` : ""}<code>${esc(st.service)}</code>${(st.target_entities || []).length ? `<span class="muted"> → ${st.target_entities.map((e) => esc(this._entityName(e))).join(", ")}</span>` : ""}</div>`).join("") || `<span class="muted">–</span>`}</td>
               <td>${b.expiry_minutes ? esc(b.expiry_minutes) + " min" : "unbegrenzt"}</td>
               <td>${b.authentication_required ? "✓" : ""}</td>
               <td>${b.destructive ? "✓" : ""}</td>
@@ -559,13 +563,30 @@ class NotificationHubPanel extends HTMLElement {
 
   _buttonDialog(b) {
     const isNew = !b;
-    b = b || { key: "", button_title: "", icon: "", service: "", target_entities: [], service_data: {}, expiry_minutes: 0, authentication_required: false, destructive: false };
+    b = b || { key: "", button_title: "", icon: "", steps: [], expiry_minutes: 0, authentication_required: false, destructive: false };
     this._fillDatalists();
-    let targets = [...b.target_entities];
-    const chips = () =>
-      targets.map((t, i) => `<span class="chip">${esc(this._entityName(t))} <a data-rm="${i}" style="cursor:pointer">✕</a></span>`).join("") ||
-      `<span class="muted">keine</span>`;
-    const hasData = b.service_data && Object.keys(b.service_data).length;
+    // Arbeitskopie der Schritte: pro Schritt Aktion, Entitäten und Zusatzdaten (als JSON-Text)
+    const steps = (b.steps && b.steps.length ? b.steps : [{ service: "", target_entities: [], service_data: {} }]).map((s) => ({
+      service: s.service || "",
+      targets: [...(s.target_entities || [])],
+      data: s.service_data && Object.keys(s.service_data).length ? JSON.stringify(s.service_data, null, 2) : "",
+      open: !!(s.service_data && Object.keys(s.service_data).length),
+    }));
+    const stepHtml = (s, i) => `
+      <div class="step" data-i="${i}">
+        <div class="stephead"><b>Schritt ${i + 1}</b>
+          <span class="stepbtns">
+            <button class="ib" type="button" data-op="up" title="Nach oben" ${i === 0 ? "disabled" : ""}>▲</button>
+            <button class="ib" type="button" data-op="down" title="Nach unten" ${i === steps.length - 1 ? "disabled" : ""}>▼</button>
+            <button class="ib" type="button" data-op="del" title="Schritt entfernen" ${steps.length === 1 ? "disabled" : ""}>✕</button>
+          </span></div>
+        <label>Aktion<input data-f="service" list="dl-services" value="${esc(s.service)}" placeholder="z. B. switch.turn_on" autocomplete="off"></label>
+        <div class="sub" style="margin-top:8px">Entitäten</div>
+        <div class="pick">${s.targets.map((t, j) => `<span class="chip">${esc(this._entityName(t))} <a data-op="rm" data-j="${j}" style="cursor:pointer">✕</a></span>`).join("") || `<span class="muted">keine</span>`}</div>
+        <div style="display:flex;gap:8px;margin-top:6px"><input data-f="add" list="dl-entities" placeholder="Entität suchen …" autocomplete="off"><button class="btn flat" type="button" data-op="add">Hinzufügen</button></div>
+        <details ${s.open ? "open" : ""}><summary>Zusätzliche Daten (JSON, optional)</summary>
+          <textarea data-f="data" rows="3" placeholder='{"brightness_pct": 50}'>${esc(s.data)}</textarea></details>
+      </div>`;
     const html = `
       <div class="dh">${isNew ? "Neuer Knopf" : `Knopf <code>${esc(b.key)}</code>`}</div>
       <div class="db">
@@ -573,17 +594,14 @@ class NotificationHubPanel extends HTMLElement {
         <label ${isNew ? "" : 'class="full"'}>Knopftext<input name="button_title" value="${esc(b.button_title)}" placeholder="🔓 Haustür öffnen"></label>
         <label>Symbol (SF Symbol, optional)<input name="icon" value="${esc(b.icon)}" placeholder="lock.open"></label>
         <label>Gültigkeit in Minuten<input name="expiry_minutes" type="number" min="0" max="${this._data.max_expiry_minutes}" value="${esc(b.expiry_minutes)}"><span class="hint">0 = unbegrenzt, höchstens 30 Tage.</span></label>
-        <label class="full">Beim Tippen: Dienst<input name="service" list="dl-services" value="${esc(b.service)}" placeholder="z. B. switch.turn_on" autocomplete="off"></label>
-        <div class="full"><div class="sub">Ziel-Entitäten</div>
-          <div class="pick" id="tchips">${chips()}</div>
-          <div style="display:flex;gap:8px;margin-top:6px"><input id="tadd" list="dl-entities" placeholder="Entität suchen …" autocomplete="off"><button class="btn flat" id="taddb" type="button">Hinzufügen</button></div>
+        <div class="full"><div class="sub">Beim Tippen – Schritte werden der Reihe nach ausgeführt, bei einem Fehler wird abgebrochen.</div>
+          <div id="steps"></div>
+          <button class="btn flat" type="button" id="addstep">＋ Schritt</button>
         </div>
         <div class="full pick">
           <label><input type="checkbox" name="authentication_required" ${b.authentication_required ? "checked" : ""}>Face ID / Code erforderlich</label>
           <label><input type="checkbox" name="destructive" ${b.destructive ? "checked" : ""}>Rot anzeigen</label>
         </div>
-        <details class="full" ${hasData ? "open" : ""}><summary>Zusätzliche Dienstdaten (JSON, für Fortgeschrittene)</summary>
-          <textarea name="service_data" rows="3" placeholder='{"brightness_pct": 50}'>${hasData ? esc(JSON.stringify(b.service_data, null, 2)) : ""}</textarea></details>
         <div class="derr"></div>
       </div>
       <div class="df">
@@ -596,21 +614,23 @@ class NotificationHubPanel extends HTMLElement {
       async (d) => {
         const f = (name) => d.querySelector(`[name="${name}"]`)?.value ?? "";
         const c = (name) => d.querySelector(`[name="${name}"]`)?.checked ?? false;
-        let serviceData = {};
-        if (f("service_data").trim()) {
-          try { serviceData = JSON.parse(f("service_data")); } catch (_) { throw new Error("Die Dienstdaten sind kein gültiges JSON."); }
-        }
         const key = isNew ? f("key").trim() : b.key;
         if (isNew && !slugOk(key)) throw new Error("Die Kennung darf nur Kleinbuchstaben, Zahlen und _ enthalten.");
+        const payload = steps.map((s, i) => {
+          let serviceData = {};
+          if (s.data.trim()) {
+            try { serviceData = JSON.parse(s.data); } catch (_) { throw new Error(`Schritt ${i + 1}: Die Zusatzdaten sind kein gültiges JSON.`); }
+          }
+          if (!s.service.trim()) throw new Error(`Schritt ${i + 1}: Bitte eine Aktion angeben.`);
+          return { service: s.service.trim(), target_entities: s.targets, service_data: serviceData };
+        });
         await this._hass.callWS({
           type: `${DOMAIN}/button/save`,
           subentry_id: isNew ? null : b.subentry_id,
           key,
           button_title: f("button_title"),
           icon: f("icon"),
-          service: f("service"),
-          target_entities: targets,
-          service_data: serviceData,
+          steps: payload,
           expiry_minutes: Number(f("expiry_minutes") || 0),
           authentication_required: c("authentication_required"),
           destructive: c("destructive"),
@@ -626,19 +646,47 @@ class NotificationHubPanel extends HTMLElement {
       }
     );
 
-    const redraw = () => {
-      d.querySelector("#tchips").innerHTML = chips();
-      d.querySelectorAll("[data-rm]").forEach((a) => (a.onclick = () => { targets.splice(Number(a.dataset.rm), 1); redraw(); }));
-    };
-    const add = () => {
-      const inp = d.querySelector("#tadd");
+    const box = d.querySelector("#steps");
+    const redraw = () => { box.innerHTML = steps.map(stepHtml).join(""); };
+    const addEntity = (i) => {
+      const inp = box.querySelector(`.step[data-i="${i}"] [data-f="add"]`);
       const v = inp.value.trim();
-      if (v && this._hass.states[v] && !targets.includes(v)) targets.push(v);
-      inp.value = "";
+      if (v && this._hass.states[v] && !steps[i].targets.includes(v)) steps[i].targets.push(v);
       redraw();
+      box.querySelector(`.step[data-i="${i}"] [data-f="add"]`)?.focus();
     };
-    d.querySelector("#taddb").onclick = add;
-    d.querySelector("#tadd").onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); add(); } };
+    box.addEventListener("input", (e) => {
+      const st = e.target.closest(".step");
+      if (!st) return;
+      const s = steps[Number(st.dataset.i)];
+      if (e.target.dataset.f === "service") s.service = e.target.value;
+      if (e.target.dataset.f === "data") s.data = e.target.value;
+    });
+    box.addEventListener("toggle", (e) => {
+      const st = e.target.closest?.(".step");
+      if (st && e.target.tagName === "DETAILS") steps[Number(st.dataset.i)].open = e.target.open;
+    }, true);
+    box.addEventListener("keydown", (e) => {
+      if (e.target.dataset.f === "add" && e.key === "Enter") { e.preventDefault(); addEntity(Number(e.target.closest(".step").dataset.i)); }
+    });
+    box.addEventListener("click", (e) => {
+      const op = e.target.closest("[data-op]");
+      if (!op) return;
+      const i = Number(op.closest(".step").dataset.i);
+      switch (op.dataset.op) {
+        case "up": [steps[i - 1], steps[i]] = [steps[i], steps[i - 1]]; break;
+        case "down": [steps[i + 1], steps[i]] = [steps[i], steps[i + 1]]; break;
+        case "del": steps.splice(i, 1); break;
+        case "rm": steps[i].targets.splice(Number(op.dataset.j), 1); break;
+        case "add": addEntity(i); return;
+      }
+      redraw();
+    });
+    d.querySelector("#addstep").onclick = () => {
+      steps.push({ service: "", targets: [], data: "", open: false });
+      redraw();
+      box.querySelector(`.step[data-i="${steps.length - 1}"] [data-f="service"]`)?.focus();
+    };
     redraw();
   }
 
