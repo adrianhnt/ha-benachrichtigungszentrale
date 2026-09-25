@@ -24,7 +24,10 @@ from .const import (
     CONF_KEY,
     CONF_SERVICE,
     CONF_SERVICE_DATA,
+    CONF_STEPS,
     CONF_TARGET_ENTITIES,
+    MAX_STEPS,
+    button_steps,
     CONF_TITLE,
     DOMAIN,
     MAX_EXPIRY_MINUTES,
@@ -111,9 +114,7 @@ def ws_data(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg
                     "key": data.get(CONF_KEY),
                     "button_title": data.get(CONF_BUTTON_TITLE, ""),
                     "icon": data.get(CONF_ICON, ""),
-                    "service": data.get(CONF_SERVICE, ""),
-                    "target_entities": list(data.get(CONF_TARGET_ENTITIES) or []),
-                    "service_data": data.get(CONF_SERVICE_DATA) or {},
+                    "steps": button_steps(data),
                     "expiry_minutes": data.get(CONF_EXPIRY_MINUTES) or 0,
                     "authentication_required": bool(data.get(CONF_AUTH_REQUIRED)),
                     "destructive": bool(data.get(CONF_DESTRUCTIVE)),
@@ -269,6 +270,15 @@ def ws_category_save(hass: HomeAssistant, connection: websocket_api.ActiveConnec
     connection.send_result(msg["id"])
 
 
+_STEP_SCHEMA = vol.Schema(
+    {
+        vol.Required("service"): str,
+        vol.Optional("target_entities"): [str],
+        vol.Optional("service_data"): vol.Any(dict, None),
+    }
+)
+
+
 @websocket_api.require_admin
 @websocket_api.websocket_command(
     {
@@ -277,9 +287,7 @@ def ws_category_save(hass: HomeAssistant, connection: websocket_api.ActiveConnec
         vol.Required("key"): str,
         vol.Required("button_title"): str,
         vol.Optional("icon"): str,
-        vol.Required("service"): str,
-        vol.Optional("target_entities"): [str],
-        vol.Optional("service_data"): dict,
+        vol.Required("steps"): [_STEP_SCHEMA],
         vol.Optional("expiry_minutes"): vol.Coerce(int),
         vol.Optional("authentication_required"): bool,
         vol.Optional("destructive"): bool,
@@ -292,21 +300,35 @@ def ws_button_save(hass: HomeAssistant, connection: websocket_api.ActiveConnecti
         hub = _hub(hass)
         key = msg["key"].strip()
         button_title = msg["button_title"].strip()
-        service = msg["service"].strip()
         if not button_title:
             raise ValueError("Der Knopftext darf nicht leer sein.")
-        if not SERVICE_RE.match(service):
-            raise ValueError("Dienst im Format domain.dienst angeben, z. B. switch.turn_on.")
-        if not hass.services.has_service(*service.split(".", 1)):
-            raise ValueError(f"Den Dienst {service} gibt es nicht.")
+        steps: list[dict[str, Any]] = []
+        for number, raw in enumerate(msg["steps"], start=1):
+            service = raw["service"].strip()
+            if not SERVICE_RE.match(service):
+                raise ValueError(
+                    f"Schritt {number}: Aktion im Format domain.dienst angeben, z. B. switch.turn_on."
+                )
+            if not hass.services.has_service(*service.split(".", 1)):
+                raise ValueError(f"Schritt {number}: Den Dienst {service} gibt es nicht.")
+            step: dict[str, Any] = {
+                CONF_SERVICE: service,
+                CONF_TARGET_ENTITIES: [e.strip() for e in raw.get("target_entities") or [] if e.strip()],
+            }
+            if raw.get("service_data"):
+                step[CONF_SERVICE_DATA] = raw["service_data"]
+            steps.append(step)
+        if not steps:
+            raise ValueError("Mindestens ein Schritt ist nötig.")
+        if len(steps) > MAX_STEPS:
+            raise ValueError(f"Höchstens {MAX_STEPS} Schritte pro Knopf.")
         expiry = int(msg.get("expiry_minutes") or 0)
         if not 0 <= expiry <= MAX_EXPIRY_MINUTES:
             raise ValueError(f"Gültigkeit: 0 bis {MAX_EXPIRY_MINUTES} Minuten.")
         data: dict[str, Any] = {
             CONF_KEY: key,
             CONF_BUTTON_TITLE: button_title,
-            CONF_SERVICE: service,
-            CONF_TARGET_ENTITIES: list(msg.get("target_entities") or []),
+            CONF_STEPS: steps,
             CONF_EXPIRY_MINUTES: expiry,
             CONF_AUTH_REQUIRED: bool(msg.get("authentication_required")),
             CONF_DESTRUCTIVE: bool(msg.get("destructive")),
@@ -314,8 +336,6 @@ def ws_button_save(hass: HomeAssistant, connection: websocket_api.ActiveConnecti
         icon = (msg.get("icon") or "").strip().removeprefix("sfsymbols:")
         if icon:
             data[CONF_ICON] = icon
-        if msg.get("service_data"):
-            data[CONF_SERVICE_DATA] = msg["service_data"]
         _save_subentry(hass, hub, SUBENTRY_ACTION, msg.get("subentry_id"), data, f"{button_title} ({key})")
     except (ValueError, HomeAssistantError) as err:
         connection.send_error(msg["id"], "invalid", str(err))

@@ -29,6 +29,7 @@ from homeassistant.helpers.selector import (
 from homeassistant.util import slugify
 
 from .const import (
+    button_steps,
     CONF_AUTH_REQUIRED,
     CONF_BUTTON_TITLE,
     CONF_CRITICAL_SOUND,
@@ -275,6 +276,14 @@ class NotificationActionSubentryFlow(ConfigSubentryFlow):
         """Aktion bearbeiten (Kennung bleibt fest)."""
         subentry = self._get_reconfigure_subentry()
         key = subentry.data[CONF_KEY]
+        steps = button_steps(subentry.data)
+        if len(steps) > 1:
+            # Mehrere Schritte lassen sich nur auf der Seite „Benachrichtigungen“ bearbeiten
+            return self.async_abort(reason="multiple_steps")
+        current = dict(subentry.data)
+        current.pop("steps", None)
+        if steps:
+            current.update(steps[0])
         errors: dict[str, str] = {}
         if user_input is not None:
             errors = self._validate(user_input)
@@ -289,7 +298,7 @@ class NotificationActionSubentryFlow(ConfigSubentryFlow):
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=self.add_suggested_values_to_schema(
-                self._schema(False), user_input or dict(subentry.data)
+                self._schema(False), user_input or current
             ),
             errors=errors,
             description_placeholders={"key": key},

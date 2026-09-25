@@ -20,6 +20,24 @@ CONF_ICON = "icon"
 CONF_SERVICE = "service"
 CONF_TARGET_ENTITIES = "target_entities"
 CONF_SERVICE_DATA = "service_data"
+CONF_STEPS = "steps"  # Liste von {service, target_entities, service_data}
+MAX_STEPS = 20
+
+
+def button_steps(data) -> list[dict]:
+    """Schritte eines Knopfs – auch für Knöpfe aus Versionen ohne Schritt-Liste."""
+    steps = data.get(CONF_STEPS)
+    if steps:
+        return [dict(step) for step in steps]
+    if data.get(CONF_SERVICE):
+        return [
+            {
+                CONF_SERVICE: data[CONF_SERVICE],
+                CONF_TARGET_ENTITIES: list(data.get(CONF_TARGET_ENTITIES) or []),
+                CONF_SERVICE_DATA: dict(data.get(CONF_SERVICE_DATA) or {}),
+            }
+        ]
+    return []
 CONF_EXPIRY_MINUTES = "expiry_minutes"
 CONF_AUTH_REQUIRED = "authentication_required"
 CONF_DESTRUCTIVE = "destructive"

@@ -65,6 +65,7 @@ from .const import (
     STORAGE_VERSION,
     SUBENTRY_ACTION,
     SUBENTRY_TYPE,
+    button_steps,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -772,19 +773,25 @@ class NotificationHub:
         return "executed"
 
     async def _async_execute(self, action: dict[str, Any]) -> None:
-        domain, _, service = action[CONF_SERVICE].partition(".")
-        if not domain or not service:
-            raise ValueError(f"Ungültiger Dienst: {action[CONF_SERVICE]}")
-        service_data = dict(action.get(CONF_SERVICE_DATA) or {})
-        entities = action.get(CONF_TARGET_ENTITIES) or []
-        target = {"entity_id": list(entities)} if entities else None
-        await self.hass.services.async_call(
-            domain,
-            service,
-            service_data,
-            blocking=True,
-            target=target,
-        )
+        """Alle Schritte des Knopfs der Reihe nach ausführen (Abbruch beim ersten Fehler)."""
+        steps = button_steps(action)
+        if not steps:
+            raise ValueError("Der Knopf hat keine Schritte.")
+        for number, step in enumerate(steps, start=1):
+            domain, _, service = str(step.get(CONF_SERVICE, "")).partition(".")
+            if not domain or not service:
+                raise ValueError(f"Schritt {number}: ungültiger Dienst {step.get(CONF_SERVICE)!r}")
+            service_data = dict(step.get(CONF_SERVICE_DATA) or {})
+            entities = step.get(CONF_TARGET_ENTITIES) or []
+            target = {"entity_id": list(entities)} if entities else None
+            try:
+                await self.hass.services.async_call(
+                    domain, service, service_data, blocking=True, target=target
+                )
+            except (HomeAssistantError, ValueError) as err:
+                if len(steps) > 1:
+                    raise HomeAssistantError(f"Schritt {number} ({domain}.{service}): {err}") from err
+                raise
 
     @callback
     def _fire(
