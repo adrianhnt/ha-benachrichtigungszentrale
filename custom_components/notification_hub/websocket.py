@@ -121,7 +121,14 @@ def ws_data(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg
             )
 
     targets = [
-        {"device_id": t.device_id, "name": t.name}
+        {
+            "device_id": t.device_id,
+            "name": t.name,
+            "critical_volume": hub.critical_volume(t.device_id),
+            "volume_entity_id": ent_reg.async_get_entity_id(
+                "number", DOMAIN, f"{entry.entry_id}_{t.app_device_id}_critical_volume"
+            ),
+        }
         for t in hub.async_get_targets().values()
     ]
     persons = [
@@ -192,7 +199,7 @@ async def ws_notification_delete(hass: HomeAssistant, connection: websocket_api.
 )
 @websocket_api.async_response
 async def ws_notification_test(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
-    """Test an die Standard-Empfänger senden (ignoriert Stumm/Nicht stören)."""
+    """Test an die Standard-Empfänger senden – genau wie aus einer Automation, nur mit 🧪 im Titel."""
     try:
         result = await _hub(hass).async_send_notification(msg["notification_id"], test=True)
     except HomeAssistantError as err:

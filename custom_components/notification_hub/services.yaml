@@ -21,7 +21,6 @@ send:
         text:
           multiline: true
     priority:
-      default: active
       selector:
         select:
           translation_key: priority

@@ -47,7 +47,7 @@ from .websocket import async_register_websocket_commands
 
 type NotificationHubConfigEntry = ConfigEntry[NotificationHub]
 
-PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.SWITCH]
+PLATFORMS: list[Platform] = [Platform.NUMBER, Platform.SENSOR, Platform.SWITCH]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 

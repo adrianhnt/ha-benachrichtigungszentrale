@@ -97,6 +97,8 @@ class NotificationHub:
         self.notifications: dict[str, dict[str, Any]] = {}
         self.do_not_disturb = False
         self.muted_types: set[str] = set()
+        # Lautstärke kritischer Benachrichtigungen pro Gerät (0–100), von number.py gesetzt
+        self.critical_volumes: dict[str, float] = {}
         self.last_sent: dict[str, Any] | None = None
 
     # ------------------------------------------------------------------
@@ -381,13 +383,6 @@ class NotificationHub:
         async_set_service_schema(self.hass, DOMAIN, SERVICE_SEND, {"fields": fields})
 
     @staticmethod
-    def _test_priority(priority: str, test: bool) -> str:
-        # Ein Test soll nicht mit Alarmton durch Lautlos brechen
-        if test and priority == PRIORITY_CRITICAL:
-            return PRIORITY_TIME_SENSITIVE
-        return priority
-
-    @staticmethod
     def template_variables(*texts: str) -> set[str]:
         """Namen der Platzhalter in den Texten."""
         names: set[str] = set()
@@ -448,14 +443,13 @@ class NotificationHub:
             type_key=notification[N_CATEGORY],
             message=self._render(raw_message, variables),
             title=final_title or None,
-            priority=self._test_priority(priority or notification[N_PRIORITY], test),
+            priority=priority or notification[N_PRIORITY],
             persons=persons,
             devices=devices,
             action_keys=list(notification[N_ACTIONS]),
             tag=tag,
             url=url or notification[N_URL] or None,
             extra_data=extra_data,
-            force=test,
             source_id=nid,
         )
 
@@ -463,14 +457,26 @@ class NotificationHub:
     # Versand
     # ------------------------------------------------------------------
 
-    def _push_payload(self, priority: str) -> dict[str, Any]:
+    def critical_volume(self, device_id: str) -> float:
+        """Lautstärke (0–100) für kritische Benachrichtigungen auf diesem Gerät."""
+        value = self.critical_volumes.get(device_id)
+        if value is None:
+            value = float(self.options[CONF_CRITICAL_VOLUME])
+        return max(0.0, min(100.0, float(value)))
+
+    def _push_payload(self, priority: str, device_id: str | None = None) -> dict[str, Any]:
         opts = self.options
         push: dict[str, Any] = {"interruption-level": priority}
         if priority == PRIORITY_CRITICAL:
+            volume = (
+                self.critical_volume(device_id)
+                if device_id
+                else float(opts[CONF_CRITICAL_VOLUME])
+            )
             push["sound"] = {
                 "name": opts[CONF_CRITICAL_SOUND] or "default",
                 "critical": 1,
-                "volume": round(float(opts[CONF_CRITICAL_VOLUME]) / 100, 2),
+                "volume": round(volume / 100, 2),
             }
         elif priority == PRIORITY_TIME_SENSITIVE:
             push["sound"] = opts[CONF_TIME_SENSITIVE_SOUND] or "default"
@@ -548,7 +554,6 @@ class NotificationHub:
         final_title = title or ntype[CONF_TITLE]
 
         data: dict[str, Any] = dict(extra_data or {})
-        data["push"] = {**data.get("push", {}), **self._push_payload(priority)}
         data["tag"] = tag
         data["group"] = ntype.get(CONF_GROUP) or type_key
         if url:
@@ -566,11 +571,19 @@ class NotificationHub:
 
         failed: list[str] = []
         for target in targets:
+            # Push-Einstellungen pro Gerät (Lautstärke bei kritisch)
+            target_data = {
+                **data,
+                "push": {
+                    **(data.get("push") or {}),
+                    **self._push_payload(priority, target.device_id),
+                },
+            }
             try:
                 await self.hass.services.async_call(
                     "notify",
                     target.notify_service,
-                    {"title": final_title, "message": message, "data": data},
+                    {"title": final_title, "message": message, "data": target_data},
                     blocking=True,
                 )
             except HomeAssistantError as err:
