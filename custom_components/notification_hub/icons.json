@@ -1,0 +1,21 @@
+{
+  "entity": {
+    "switch": {
+      "do_not_disturb": {
+        "default": "mdi:bell-ring-outline",
+        "state": { "on": "mdi:bell-sleep" }
+      },
+      "mute": {
+        "default": "mdi:bell-outline",
+        "state": { "on": "mdi:bell-off" }
+      }
+    },
+    "sensor": {
+      "last_notification": { "default": "mdi:message-badge-outline" }
+    }
+  },
+  "services": {
+    "send": { "service": "mdi:bell-ring" },
+    "clear": { "service": "mdi:bell-remove" }
+  }
+}

@@ -1,0 +1,74 @@
+send:
+  fields:
+    type:
+      required: true
+      example: haustuer
+      selector:
+        device:
+          filter:
+            - integration: notification_hub
+              model: Benachrichtigungstyp
+    message:
+      required: true
+      example: Es hat an der Haustür geklingelt.
+      selector:
+        text:
+          multiline: true
+    priority:
+      default: active
+      selector:
+        select:
+          translation_key: priority
+          options:
+            - passive
+            - active
+            - time-sensitive
+            - critical
+    persons:
+      selector:
+        entity:
+          domain: person
+          multiple: true
+    devices:
+      selector:
+        device:
+          integration: mobile_app
+          multiple: true
+    actions:
+      example: haustuer_oeffnen
+      selector:
+        device:
+          multiple: true
+          filter:
+            - integration: notification_hub
+              model: Aktion
+    title:
+      selector:
+        text:
+    tag:
+      selector:
+        text:
+    url:
+      example: /lovelace/0
+      selector:
+        text:
+    data:
+      selector:
+        object:
+
+clear:
+  fields:
+    tag:
+      required: true
+      selector:
+        text:
+    persons:
+      selector:
+        entity:
+          domain: person
+          multiple: true
+    devices:
+      selector:
+        device:
+          integration: mobile_app
+          multiple: true
