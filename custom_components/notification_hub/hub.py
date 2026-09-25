@@ -369,12 +369,17 @@ class NotificationHub:
             return
         fields = {k: dict(v) for k, v in (send.get("fields") or {}).items()}
         types = self.types
+
+        def cat_title(n: dict[str, Any]) -> str:
+            return types.get(n[N_CATEGORY], {}).get(CONF_TITLE, n[N_CATEGORY])
+
+        # Anzeige: „🧺 Waschmaschine - waschmaschine_ausgeraeumt“, sortiert nach Kategorie
         options = [
-            {
-                "value": n[N_ID],
-                "label": f"{n[N_ID]} – {n[N_TITLE] or types.get(n[N_CATEGORY], {}).get(CONF_TITLE, n[N_CATEGORY])}",
-            }
-            for n in sorted(self.notifications.values(), key=lambda n: n[N_ID])
+            {"value": n[N_ID], "label": f"{cat_title(n)} - {n[N_ID]}"}
+            for n in sorted(
+                self.notifications.values(),
+                key=lambda n: ("".join(c for c in cat_title(n) if c.isalnum()).lower(), n[N_ID]),
+            )
         ]
         if "id" in fields:
             fields["id"]["selector"] = {
