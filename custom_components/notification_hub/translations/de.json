@@ -163,35 +163,43 @@
   "services": {
     "send": {
       "name": "Benachrichtigung senden",
-      "description": "Sendet eine Push-Benachrichtigung über die Benachrichtigungszentrale.",
+      "description": "Sendet eine zentral verwaltete Benachrichtigung (ID) oder eine frei zusammengestellte Push-Benachrichtigung.",
       "fields": {
+        "id": {
+          "name": "Benachrichtigung",
+          "description": "ID einer Benachrichtigung aus der Seite „Benachrichtigungen“. Text, Knöpfe und Empfänger kommen von dort."
+        },
+        "variables": {
+          "name": "Werte für Platzhalter",
+          "description": "Füllt Platzhalter im Text. Beispiel: dauer mit dem Wert 1:32 h für den Platzhalter dauer."
+        },
         "type": {
           "name": "Typ",
-          "description": "Benachrichtigungstyp aus der Liste auswählen. In YAML geht auch die Kennung, z. B. haustuer."
+          "description": "Nur ohne Benachrichtigung (ID): Typ bzw. Kategorie aus der Liste. In YAML geht auch die Kennung, z. B. haustuer."
         },
         "message": {
           "name": "Nachricht",
-          "description": "Text der Benachrichtigung."
+          "description": "Nur ohne Benachrichtigung (ID) nötig; sonst überschreibt es den Text aus der Tabelle."
         },
         "priority": {
           "name": "Dringlichkeit",
-          "description": "Standard, wenn leer."
+          "description": "Überschreibt die Dringlichkeit. Leer = aus der Tabelle bzw. Standard."
         },
         "persons": {
           "name": "Personen",
-          "description": "Alle Geräte dieser Personen. Leer (und keine Geräte) = alle Geräte."
+          "description": "Alle Geräte dieser Personen. Ersetzt die Standard-Empfänger der Benachrichtigung. Leer = Standard-Empfänger bzw. alle Geräte."
         },
         "devices": {
           "name": "Geräte",
-          "description": "Einzelne Geräte, zusätzlich zu den Personen."
+          "description": "Einzelne Geräte, zusätzlich zu den gewählten Personen. Ersetzt die Standard-Empfänger der Benachrichtigung."
         },
         "actions": {
           "name": "Aktionen",
-          "description": "Aktionen, die als Knöpfe erscheinen. In YAML gehen auch die Kennungen, z. B. auto_open_aus."
+          "description": "Nur ohne Benachrichtigung (ID): Knöpfe aus der Liste. In YAML gehen auch die Kennungen."
         },
         "title": {
           "name": "Titel",
-          "description": "Überschreibt den Titel des Typs."
+          "description": "Überschreibt den Titel."
         },
         "tag": {
           "name": "Tag",
