@@ -131,7 +131,8 @@
         "invalid_service_data": "Die Dienstdaten müssen ein YAML-Objekt sein."
       },
       "abort": {
-        "reconfigure_successful": "Gespeichert."
+        "reconfigure_successful": "Gespeichert.",
+        "multiple_steps": "Dieser Knopf hat mehrere Schritte. Bitte auf der Seite „Benachrichtigungen“ im Reiter „Knöpfe“ bearbeiten."
       }
     }
   },
