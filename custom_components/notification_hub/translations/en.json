@@ -1,0 +1,229 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Benachrichtigungszentrale",
+        "description": "Richtet die zentrale Verwaltung für Push-Benachrichtigungen ein. Danach kannst du Benachrichtigungstypen und Aktionen anlegen."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Die Benachrichtigungszentrale ist bereits eingerichtet.",
+      "already_configured": "Die Benachrichtigungszentrale ist bereits eingerichtet."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Globale Einstellungen",
+        "data": {
+          "critical_volume": "Lautstärke kritischer Benachrichtigungen",
+          "critical_sound": "Ton kritischer Benachrichtigungen",
+          "time_sensitive_sound": "Ton zeitkritischer Benachrichtigungen",
+          "expired_feedback": "Rückmeldung bei abgelaufenen Aktionen"
+        },
+        "data_description": {
+          "critical_volume": "Gilt nur für kritische Benachrichtigungen. Diese durchbrechen auch den Lautlos-Modus.",
+          "critical_sound": "Name des iOS-Tons, z. B. default.",
+          "time_sensitive_sound": "Name des iOS-Tons, z. B. default. Die Lautstärke folgt der normalen Gerätelautstärke.",
+          "expired_feedback": "Schickt eine leise Benachrichtigung, wenn ein Knopf abgelaufen ist oder die Aktion fehlschlägt."
+        }
+      }
+    }
+  },
+  "config_subentries": {
+    "notification_type": {
+      "entry_type": "Benachrichtigungstyp",
+      "initiate_flow": {
+        "user": "Benachrichtigungstyp hinzufügen",
+        "reconfigure": "Benachrichtigungstyp bearbeiten"
+      },
+      "step": {
+        "user": {
+          "title": "Benachrichtigungstyp hinzufügen",
+          "data": {
+            "key": "Kennung",
+            "title": "Titel",
+            "group": "Gruppierung"
+          },
+          "data_description": {
+            "key": "Eindeutig, nur Kleinbuchstaben, Zahlen und _. Wird in Automationen verwendet, z. B. haustuer. Kann später nicht geändert werden.",
+            "title": "Überschrift der Benachrichtigung, z. B. 🚪 Haustür. Emojis sind erlaubt.",
+            "group": "Optional. Benachrichtigungen mit gleicher Gruppierung werden auf dem iPhone gestapelt. Leer = Kennung."
+          }
+        },
+        "reconfigure": {
+          "title": "Benachrichtigungstyp bearbeiten",
+          "description": "Kennung: {key}",
+          "data": {
+            "title": "Titel",
+            "group": "Gruppierung"
+          },
+          "data_description": {
+            "title": "Überschrift der Benachrichtigung. Emojis sind erlaubt.",
+            "group": "Optional. Leer = Kennung."
+          }
+        }
+      },
+      "error": {
+        "invalid_key": "Nur Kleinbuchstaben, Zahlen und _ erlaubt (keine Umlaute oder Leerzeichen).",
+        "duplicate_key": "Diese Kennung gibt es schon."
+      },
+      "abort": {
+        "reconfigure_successful": "Gespeichert."
+      }
+    },
+    "notification_action": {
+      "entry_type": "Aktion",
+      "initiate_flow": {
+        "user": "Aktion hinzufügen",
+        "reconfigure": "Aktion bearbeiten"
+      },
+      "step": {
+        "user": {
+          "title": "Aktion (Knopf) hinzufügen",
+          "data": {
+            "key": "Kennung",
+            "button_title": "Knopftext",
+            "icon": "Symbol (SF Symbol)",
+            "service": "Dienst",
+            "target_entities": "Ziel-Entitäten",
+            "service_data": "Zusätzliche Dienstdaten",
+            "expiry_minutes": "Gültigkeit",
+            "authentication_required": "Face ID / Code erforderlich",
+            "destructive": "Als kritische Aktion rot anzeigen"
+          },
+          "data_description": {
+            "key": "Eindeutig, nur Kleinbuchstaben, Zahlen und _, z. B. haustuer_oeffnen. Kann später nicht geändert werden.",
+            "button_title": "Text auf dem Knopf, z. B. 🔓 Haustür öffnen. Emojis sind erlaubt.",
+            "icon": "Optional. Name eines SF Symbols (App „SF Symbols“), z. B. lock.open.",
+            "service": "Was beim Tippen passiert, z. B. switch.turn_on, input_boolean.turn_off, automation.trigger oder script.turn_on.",
+            "target_entities": "Auf welche Entitäten der Dienst wirkt.",
+            "service_data": "Optional, für Fortgeschrittene (YAML).",
+            "expiry_minutes": "Nach wie vielen Minuten der Knopf verfällt. 0 = unbegrenzt. Höchstens 43200 (= 30 Tage).",
+            "authentication_required": "Das iPhone muss entsperrt sein bzw. Face ID bestätigen, bevor die Aktion ausgeführt wird.",
+            "destructive": "Knopf wird auf dem iPhone rot dargestellt."
+          }
+        },
+        "reconfigure": {
+          "title": "Aktion bearbeiten",
+          "description": "Kennung: {key}",
+          "data": {
+            "button_title": "Knopftext",
+            "icon": "Symbol (SF Symbol)",
+            "service": "Dienst",
+            "target_entities": "Ziel-Entitäten",
+            "service_data": "Zusätzliche Dienstdaten",
+            "expiry_minutes": "Gültigkeit",
+            "authentication_required": "Face ID / Code erforderlich",
+            "destructive": "Als kritische Aktion rot anzeigen"
+          },
+          "data_description": {
+            "service": "z. B. switch.turn_on, input_boolean.turn_off, automation.trigger oder script.turn_on.",
+            "expiry_minutes": "Nach wie vielen Minuten der Knopf verfällt. 0 = unbegrenzt. Höchstens 43200 (= 30 Tage)."
+          }
+        }
+      },
+      "error": {
+        "invalid_key": "Nur Kleinbuchstaben, Zahlen und _ erlaubt (keine Umlaute oder Leerzeichen).",
+        "duplicate_key": "Diese Kennung gibt es schon.",
+        "invalid_service": "Format: domain.dienst, z. B. switch.turn_on.",
+        "unknown_service": "Diesen Dienst gibt es in Home Assistant nicht.",
+        "invalid_service_data": "Die Dienstdaten müssen ein YAML-Objekt sein."
+      },
+      "abort": {
+        "reconfigure_successful": "Gespeichert."
+      }
+    }
+  },
+  "entity": {
+    "switch": {
+      "do_not_disturb": {
+        "name": "Nicht stören"
+      },
+      "mute": {
+        "name": "Stumm"
+      }
+    },
+    "sensor": {
+      "last_notification": {
+        "name": "Letzte Benachrichtigung"
+      }
+    }
+  },
+  "selector": {
+    "priority": {
+      "options": {
+        "passive": "Leise (passiv)",
+        "active": "Standard",
+        "time-sensitive": "Zeitkritisch",
+        "critical": "Kritisch (Alarm)"
+      }
+    }
+  },
+  "services": {
+    "send": {
+      "name": "Benachrichtigung senden",
+      "description": "Sendet eine Push-Benachrichtigung über die Benachrichtigungszentrale.",
+      "fields": {
+        "type": {
+          "name": "Typ",
+          "description": "Benachrichtigungstyp aus der Liste auswählen. In YAML geht auch die Kennung, z. B. haustuer."
+        },
+        "message": {
+          "name": "Nachricht",
+          "description": "Text der Benachrichtigung."
+        },
+        "priority": {
+          "name": "Dringlichkeit",
+          "description": "Standard, wenn leer."
+        },
+        "persons": {
+          "name": "Personen",
+          "description": "Alle Geräte dieser Personen. Leer (und keine Geräte) = alle Geräte."
+        },
+        "devices": {
+          "name": "Geräte",
+          "description": "Einzelne Geräte, zusätzlich zu den Personen."
+        },
+        "actions": {
+          "name": "Aktionen",
+          "description": "Aktionen, die als Knöpfe erscheinen. In YAML gehen auch die Kennungen, z. B. auto_open_aus."
+        },
+        "title": {
+          "name": "Titel",
+          "description": "Überschreibt den Titel des Typs."
+        },
+        "tag": {
+          "name": "Tag",
+          "description": "Gleicher Tag ersetzt eine ältere Benachrichtigung und kann mit „Benachrichtigung entfernen“ gelöscht werden."
+        },
+        "url": {
+          "name": "URL",
+          "description": "Wird beim Antippen der Benachrichtigung geöffnet."
+        },
+        "data": {
+          "name": "Zusatzdaten",
+          "description": "Für Fortgeschrittene: weitere Daten für die Companion-App."
+        }
+      }
+    },
+    "clear": {
+      "name": "Benachrichtigung entfernen",
+      "description": "Entfernt Benachrichtigungen mit diesem Tag von den Geräten.",
+      "fields": {
+        "tag": {
+          "name": "Tag",
+          "description": "Tag der Benachrichtigung."
+        },
+        "persons": {
+          "name": "Personen",
+          "description": "Leer (und keine Geräte) = alle Geräte."
+        },
+        "devices": {
+          "name": "Geräte",
+          "description": "Einzelne Geräte."
+        }
+      }
+    }
+  }
+}
