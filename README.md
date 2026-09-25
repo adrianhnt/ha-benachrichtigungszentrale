@@ -4,11 +4,12 @@ Home-Assistant-Integration für Push-Benachrichtigungen an die Companion-App (iO
 
 ## Seite „Benachrichtigungen“
 
-Eigene Seite in der Seitenleiste (nur für Administratoren) mit drei Tabellen:
+Eigene Seite in der Seitenleiste (nur für Administratoren) mit vier Tabellen:
 
-- **Benachrichtigungen** – jede Zeile eine fertige Benachrichtigung: ID, Kategorie, Titel, Text (mit Platzhaltern wie `{{ dauer }}`), Dringlichkeit, Standard-Empfänger, Knöpfe, Notiz. „Verwendet in“ zeigt, welche Automationen und Skripte die ID aufrufen. Test senden und Aufruf kopieren direkt aus der Tabelle.
+- **Benachrichtigungen** – jede Zeile eine fertige Benachrichtigung: ID, Kategorie, Titel, Text (mit Platzhaltern wie `{{ dauer }}`), Dringlichkeit, Standard-Empfänger, Knöpfe, Notiz. „Verwendet in“ zeigt, welche Automationen und Skripte die ID aufrufen. Test senden und Aufruf kopieren direkt aus der Tabelle. Ein Test wird genau wie aus einer Automation gesendet, nur mit 🧪 vor dem Titel.
 - **Knöpfe** – wiederverwendbare Aktionsknöpfe: Text, SF-Symbol, Dienst und Ziel, Gültigkeit, Face ID, rot.
 - **Kategorien** – ordnen Benachrichtigungen, stapeln sie auf dem iPhone und lassen sich gemeinsam stummschalten (kritische kommen immer durch).
+- **Geräte** – Lautstärke kritischer Benachrichtigungen pro Gerät (auch als Entität `number.…_kritische_lautstarke_…` für Automationen).
 
 Änderungen gelten sofort beim nächsten Senden.
 
