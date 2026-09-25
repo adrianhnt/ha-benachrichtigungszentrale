@@ -127,6 +127,7 @@ class NotificationHubPanel extends HTMLElement {
           <div class="tab" data-tab="notifications">Benachrichtigungen</div>
           <div class="tab" data-tab="buttons">Knöpfe</div>
           <div class="tab" data-tab="categories">Kategorien</div>
+          <div class="tab" data-tab="devices">Geräte</div>
         </div>
       </div>
       <div class="content" id="content"><div class="muted">Lade …</div></div>
@@ -158,6 +159,13 @@ class NotificationHubPanel extends HTMLElement {
     root.addEventListener("change", (e) => {
       if (e.target.id === "catf") { this._cat = e.target.value; this._render(); }
       if (e.target.dataset.mute) this._toggleMute(e.target.dataset.mute, e.target.checked);
+      if (e.target.dataset.vol) this._setVolume(e.target.dataset.vol, Number(e.target.value));
+    });
+    root.addEventListener("input", (e) => {
+      if (e.target.dataset.vol) {
+        const out = e.target.parentElement.querySelector("output");
+        if (out) out.textContent = `${e.target.value} %`;
+      }
     });
   }
 
@@ -222,6 +230,7 @@ class NotificationHubPanel extends HTMLElement {
     if (this._tab === "notifications") content.innerHTML = this._renderNotifications();
     if (this._tab === "buttons") content.innerHTML = this._renderButtons();
     if (this._tab === "categories") content.innerHTML = this._renderCategories();
+    if (this._tab === "devices") content.innerHTML = this._renderDevices();
   }
 
   _renderNotifications() {
@@ -332,6 +341,27 @@ class NotificationHubPanel extends HTMLElement {
       <div class="info">„Direkt verwendet in“: Automationen, die noch die bisherige Variante (Typ + Text im Aufruf) nutzen.</div>`;
   }
 
+  _renderDevices() {
+    const targets = this._data.targets || [];
+    return `
+      <div class="toolbar">
+        <div class="muted" style="flex:1">Lautstärke, mit der kritische Benachrichtigungen auf dem jeweiligen Gerät klingeln – auch bei Lautlos und „Nicht stören“. 0 % = stumm, wird aber angezeigt.</div>
+      </div>
+      <div class="card"><table>
+        <thead><tr><th>Gerät</th><th>Kritische Lautstärke</th><th>Entität</th></tr></thead>
+        <tbody>${targets
+          .map((t) => `<tr>
+              <td>${esc(t.name)}</td>
+              <td>${t.volume_entity_id
+                ? `<span style="display:inline-flex;align-items:center;gap:10px"><input type="range" min="0" max="100" step="5" value="${Number(t.critical_volume)}" data-vol="${esc(t.volume_entity_id)}" style="width:180px"><output>${Math.round(t.critical_volume)} %</output></span>`
+                : `<span class="muted">${Math.round(t.critical_volume)} % (Regler erscheint nach dem Neuladen der Integration)</span>`}</td>
+              <td>${t.volume_entity_id ? `<code>${esc(t.volume_entity_id)}</code>` : `<span class="muted">–</span>`}</td>
+            </tr>`)
+          .join("") || `<tr><td colspan="3" class="muted">Keine Geräte mit der Home-Assistant-App gefunden.</td></tr>`}
+        </tbody></table></div>
+      <div class="info">Die Regler sind normale Entitäten – die Lautstärke lässt sich also auch per Automation ändern (z. B. nachts leiser).</div>`;
+  }
+
   // ------------------------------------------------------------------ Klicks
 
   _onClick(e) {
@@ -371,17 +401,28 @@ class NotificationHubPanel extends HTMLElement {
     }
   }
 
+  async _setVolume(entityId, value) {
+    try {
+      await this._hass.callService("number", "set_value", { entity_id: entityId, value });
+      const t = (this._data.targets || []).find((x) => x.volume_entity_id === entityId);
+      if (t) t.critical_volume = value;
+    } catch (err) {
+      this._toast(`Fehler: ${err.message || err}`);
+    }
+  }
+
   async _test(id) {
     const n = this._notifs.find((x) => x.id === id);
     const hasButtons = n?.actions?.length;
     const msg =
       `Test „${id}“ an die Standard-Empfänger senden?` +
       (hasButtons ? "\n\nDie Knöpfe sind echt: Antippen führt die Aktion wirklich aus." : "") +
-      (n?.priority === "critical" ? "\n\nKritisch wird im Test als zeitkritisch gesendet (kein Alarmton)." : "");
+      (n?.priority === "critical" ? "\n\nAchtung: Kritisch – klingelt mit Alarmton, auch bei Lautlos und „Nicht stören“." : "") +
+      (this._data?.do_not_disturb && n?.priority !== "critical" ? "\n\n„Nicht stören“ ist aktiv – der Test wird deshalb nicht zugestellt." : "");
     if (!confirm(msg)) return;
     try {
       const res = await this._hass.callWS({ type: `${DOMAIN}/notification/test`, notification_id: id });
-      this._toast(res.sent ? `Test gesendet an ${res.recipients.join(", ")}` : `Nicht gesendet (${res.reason})`);
+      this._toast(res.sent ? `Test gesendet an ${res.recipients.join(", ")}` : `Nicht gesendet: ${({ do_not_disturb: "„Nicht stören“ ist aktiv", muted: "Kategorie ist stummgeschaltet" })[res.reason] || res.reason}`);
     } catch (err) {
       this._toast(`Fehler: ${err.message || err}`);
     }
