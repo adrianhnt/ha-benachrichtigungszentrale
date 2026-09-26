@@ -25,9 +25,18 @@ from .hub import NotificationHub
 SEND_ACTION = f"{DOMAIN}.{SERVICE_SEND}"
 
 
+# Felder eines Aufrufs, die Vorgaben aus der Tabelle überschreiben
+OVERRIDE_FIELDS = ("priority", "title", "message", "persons", "devices", "url", "tag", "data")
+
+
 def _calls(node: Any) -> Iterator[dict[str, Any]]:
-    """Alle Aufrufe von notification_hub.send in einer Konfiguration finden."""
+    """Alle aktiven Aufrufe von notification_hub.send in einer Konfiguration finden.
+
+    Deaktivierte Schritte (enabled: false) und alles darunter werden übersprungen.
+    """
     if isinstance(node, dict):
+        if node.get("enabled") is False:
+            return
         action = node.get("action") or node.get("service")
         if action == SEND_ACTION:
             data = node.get("data")
@@ -86,6 +95,22 @@ def _sources(hass: HomeAssistant) -> Iterator[tuple[dict[str, Any], dict[str, An
             )
 
 
+def _overrides(data: dict[str, Any]) -> dict[str, Any]:
+    """Was dieser Aufruf gegenüber der Tabelle überschreibt (für die Anzeige)."""
+    out: dict[str, Any] = {}
+    for key in OVERRIDE_FIELDS:
+        value = data.get(key)
+        if value in (None, "", [], {}):
+            continue
+        if _is_template(value):
+            out[key] = {"template": True}
+        elif isinstance(value, (list, dict)):
+            out[key] = value
+        else:
+            out[key] = str(value)
+    return out
+
+
 def collect_usage(hass: HomeAssistant, hub: NotificationHub) -> dict[str, Any]:
     """Verwendung pro Benachrichtigung, Kategorie und Knopf ermitteln."""
     usage: dict[str, Any] = {
@@ -107,7 +132,12 @@ def collect_usage(hass: HomeAssistant, hub: NotificationHub) -> dict[str, Any]:
                 if all(r["entity_id"] != ref["entity_id"] for r in usage["dynamic"]):
                     usage["dynamic"].append(ref)
             elif isinstance(nid, str) and nid:
-                add("notifications", nid, ref)
+                refs = usage["notifications"].setdefault(nid, [])
+                entry = next((r for r in refs if r["entity_id"] == ref["entity_id"]), None)
+                if entry is None:
+                    entry = {**ref, "calls": []}
+                    refs.append(entry)
+                entry["calls"].append({"overrides": _overrides(data)})
                 continue
 
             # Bisherige Variante: Typ und Knöpfe direkt im Aufruf
