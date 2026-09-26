@@ -60,6 +60,7 @@ const STYLE = `
   .unused { color:var(--error-color,#db4437); font-size:12.5px; }
   .link { color:var(--primary-color); cursor:pointer; text-decoration:none; display:block; }
   .link.off { color:var(--secondary-text-color); }
+  .ovr { font-size:11.5px; color:var(--warning-color,#e68a00); margin:0 0 4px 2px; line-height:1.35; }
   .acts { white-space:nowrap; text-align:right; position:sticky; right:0; background:var(--card-background-color,#fff); box-shadow:-6px 0 6px -6px rgba(0,0,0,.25); }
   th.actsh { position:sticky; right:0; background:var(--card-background-color,#fff); }
   .ib { border:0; background:transparent; cursor:pointer; font-size:16px; padding:4px 6px; border-radius:6px; }
@@ -210,8 +211,45 @@ class NotificationHubPanel extends HTMLElement {
   _refs(list) {
     if (!list?.length) return "";
     return list
-      .map((r) => `<a class="link ${r.enabled ? "" : "off"}" data-nav="${esc(r.url || "")}" title="${esc(r.entity_id)}${r.enabled ? "" : " (deaktiviert)"}">${r.kind === "script" ? "📜 " : ""}${esc(r.name)}${r.enabled ? "" : " (aus)"}</a>`)
+      .map((r) => `<a class="link ${r.enabled ? "" : "off"}" data-nav="${esc(r.url || "")}" title="${esc(r.entity_id)}${r.enabled ? "" : " (deaktiviert)"}">${r.kind === "script" ? "📜 " : ""}${esc(r.name)}${r.enabled ? "" : " (aus)"}</a>${this._overridesHtml(r.calls)}`)
       .join("");
+  }
+
+  // Was ein Aufruf gegenüber der Tabelle überschreibt, z. B. „Dringlichkeit → Standard“
+  _overrideText(o) {
+    const val = (v, fmt) => (v && typeof v === "object" && v.template ? "berechnet" : fmt(v));
+    const short = (t) => { const s = String(t); return `„${s.length > 40 ? s.slice(0, 40) + "…" : s}“`; };
+    const list = (v, name) => (Array.isArray(v) ? v : [v]).map(name).join(", ");
+    const parts = [];
+    for (const [k, v] of Object.entries(o)) {
+      if (k === "priority") parts.push(`Dringlichkeit → ${val(v, (x) => PRIO[x] || x)}`);
+      else if (k === "title") parts.push(`Titel → ${val(v, short)}`);
+      else if (k === "message") parts.push(`Text → ${val(v, short)}`);
+      else if (k === "persons") parts.push(`Empfänger → ${val(v, (x) => list(x, (p) => this._personName(p)))}`);
+      else if (k === "devices") parts.push(`Geräte → ${val(v, (x) => list(x, (d) => this._data.targets.find((t) => t.device_id === d)?.name ?? d))}`);
+      else if (k === "url") parts.push(`Link → ${val(v, (x) => x)}`);
+      else if (k === "tag") parts.push(`Tag → ${val(v, (x) => x)}`);
+      else if (k === "data") parts.push("Zusatzdaten");
+      else parts.push(k);
+    }
+    return parts.join(" · ");
+  }
+
+  _overridesHtml(calls) {
+    if (!calls?.length) return "";
+    const withOv = calls.filter((c) => c.overrides && Object.keys(c.overrides).length);
+    if (!withOv.length) return "";
+    const lines = [];
+    const plain = calls.length - withOv.length;
+    const multi = calls.length > 1;
+    if (plain) lines.push(`${multi ? `${plain}× ` : ""}wie Tabelle`);
+    const seen = new Map();
+    for (const c of withOv) {
+      const t = this._overrideText(c.overrides);
+      seen.set(t, (seen.get(t) || 0) + 1);
+    }
+    for (const [t, n] of seen) lines.push(`${multi ? `${n}× ` : ""}${esc(t)}`);
+    return `<div class="ovr" title="Dieser Aufruf überschreibt Vorgaben aus der Tabelle">${lines.map((l) => `<div>↳ ${l}</div>`).join("")}</div>`;
   }
 
   _matches(obj) {
